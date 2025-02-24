@@ -18,9 +18,6 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import javax.imageio.ImageIO;
-import javax.sound.sampled.AudioInputStream;
-import javax.sound.sampled.AudioSystem;
-import javax.sound.sampled.Clip;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -53,7 +50,6 @@ public class PweeperMain {
     public static GameMouseController gameController;
 
     public static final Map<String, BufferedImage> SPRITES = new HashMap<>();
-    public static final Map<String, Clip> SOUNDS = new HashMap<>();
 
     public PweeperMain() {
         frame = new JFrame("Pweeper Sweeper");
@@ -71,24 +67,6 @@ public class PweeperMain {
                     if (imageStream != null) {
                         SPRITES.put(name, ImageIO.read(imageStream));
                     }
-                }
-                reader.close();
-            }
-
-            InputStream soundList = ClassLoader.getSystemResourceAsStream("resources/sounds/sounds.lst");
-            if (soundList != null) {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(soundList));
-                String line;
-                while ((line = reader.readLine()) != null) {
-                    String name = line.trim().replace(".wav", "");
-                    InputStream wavStream = ClassLoader.getSystemResourceAsStream("resources/sounds/" + line.trim());
-                    if (wavStream != null) {
-                        AudioInputStream audioStream = AudioSystem.getAudioInputStream(wavStream);
-                        Clip clip = AudioSystem.getClip();
-                        clip.open(audioStream);
-                        SOUNDS.put(name, clip);
-                    }
-
                 }
                 reader.close();
             }
@@ -605,14 +583,6 @@ public class PweeperMain {
 
         helpFrame.setSize(newWidth, newHeight);
         helpFrame.setResizable(false);
-    }
-
-    public static void playSound(String name) {
-        Clip clip = SOUNDS.get(name);
-        if (clip != null) {
-            clip.setFramePosition(0);
-            clip.start();
-        }
     }
 
     public static void main(String[] args) {
