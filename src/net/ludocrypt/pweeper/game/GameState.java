@@ -25,6 +25,8 @@ public class GameState {
     private boolean around;
     private boolean clicked;
 
+    protected GameMouseController controller;
+
     public GameState(int width, int height, int mines, int portals) {
         this(width, height, mines, portals, GamePermissions.FULL);
     }
@@ -113,10 +115,15 @@ public class GameState {
     }
 
     public int getPortalMarks(int x, int y) {
+
+        if (!isPortal(x, y)) {
+            return 0;
+        }
+
         return isInBounds(x, y) ? portalMarks[x][y] : 0;
     }
 
-    public void reveal(int x, int y) {
+    public int reveal(int x, int y) {
 
         if (!officiallyStarted) {
             if (isInBounds(x, y)) {
@@ -129,10 +136,12 @@ public class GameState {
         }
 
         if (!isInBounds(x, y) || !gameLive || revealed[x][y] || flagged[x][y]) {
-            return;
+            return 0;
         }
 
         revealed[x][y] = true;
+
+        int i = 1;
 
         if (isMine(x, y)) {
             gameLive = false;
@@ -141,14 +150,14 @@ public class GameState {
                 for (int dx = -1; dx <= 1; dx++) {
                     for (int dy = -1; dy <= 1; dy++) {
                         if (!isRevealed(x + dx, y + dy)) {
-                            reveal(x + dx, y + dy);
+                            i += reveal(x + dx, y + dy);
                         }
                     }
                 }
-
             }
         }
 
+        return i;
     }
 
     public void toggleFlag(int x, int y) {
@@ -158,18 +167,20 @@ public class GameState {
         flagged[x][y] = !flagged[x][y];
     }
 
-    public void increaseMark(int x, int y) {
+    public boolean increaseMark(int x, int y) {
         if (!gameLive || !revealed[x][y] || !isPortal(x, y)) {
-            return;
+            return false;
         }
         portalMarks[x][y] = Math.min(portalMarks[x][y] + 1, 18);
+        return true;
     }
 
-    public void decreaseMark(int x, int y) {
+    public boolean decreaseMark(int x, int y) {
         if (!gameLive || !revealed[x][y] || !isPortal(x, y)) {
-            return;
+            return false;
         }
         portalMarks[x][y] = Math.max(portalMarks[x][y] - 1, 0);
+        return true;
     }
 
     public long getElapsedTime() {
@@ -177,169 +188,142 @@ public class GameState {
     }
 
     public void drawCells(Graphics2D g, boolean realGame) {
-        for (int x = 0; x < getWidth(); x++) {
-            for (int y = 0; y < getHeight(); y++) {
-                int dx = x * 20 + (realGame ? 10 : 0);
-                int dy = y * 20 + (realGame ? 70 : 0);
+        drawCells(realGame, (x, y, dx, dy) -> {
 
-                if (isRevealed(x, y) || (clicked && x == mouseX && y == mouseY) || (clicked && around && isAroundMouse(x, y))) {
-                    g.drawImage(PweeperMain.SPRITES.get("CellRevealed"), dx, dy, null);
-                } else {
-                    g.drawImage(PweeperMain.SPRITES.get("Cell"), dx, dy, null);
-                }
+            if (isRevealed(x, y) || (clicked && x == mouseX && y == mouseY) || (clicked && around && isAroundMouse(x, y))) {
+                g.drawImage(PweeperMain.SPRITES.get("CellRevealed"), dx, dy, null);
+            } else {
+                g.drawImage(PweeperMain.SPRITES.get("Cell"), dx, dy, null);
             }
-        }
+
+        });
     }
 
     public void drawPortalCells(Graphics2D g, boolean realGame) {
-        for (int x = 0; x < getWidth(); x++) {
-            for (int y = 0; y < getHeight(); y++) {
-                int dx = x * 20 + (realGame ? 10 : 0);
-                int dy = y * 20 + (realGame ? 70 : 0);
+        drawCells(realGame, (x, y, dx, dy) -> {
+            if (x == mouseX && y == mouseY) {
+                if (isPortal(x, y)) {
+                    if (portalState(x, y)) {
+                        if (isRevealed(x, y)) {
+                            g.drawImage(PweeperMain.SPRITES.get("CellA"), dx, dy, null);
+                        } else if (!gameLive) {
+                            g.drawImage(PweeperMain.SPRITES.get("CellRevealedA"), dx, dy, null);
+                        }
 
-                if (x == mouseX && y == mouseY) {
-                    if (isPortal(x, y)) {
-                        if (portalState(x, y)) {
-                            if (isRevealed(x, y)) {
-                                g.drawImage(PweeperMain.SPRITES.get("CellA"), dx, dy, null);
-                            } else if (!gameLive) {
-                                g.drawImage(PweeperMain.SPRITES.get("CellRevealedA"), dx, dy, null);
-                            }
+                        Int2 portal = this.portalsMap.get(new Int2(x, y));
 
-                            Int2 portal = this.portalsMap.get(new Int2(x, y));
+                        int ddx = portal.x * 20 + (realGame ? 10 : 0);
+                        int ddy = portal.y * 20 + (realGame ? 70 : 0);
 
-                            int ddx = portal.x * 20 + (realGame ? 10 : 0);
-                            int ddy = portal.y * 20 + (realGame ? 70 : 0);
-
-                            if (gameLive) {
-                                if (isRevealed(portal.x, portal.y) && isRevealed(x, y)) {
-                                    g.drawImage(PweeperMain.SPRITES.get("CellB"), ddx, ddy, null);
-                                }
-                            } else {
-                                if (isRevealed(portal.x, portal.y)) {
-                                    g.drawImage(PweeperMain.SPRITES.get("CellB"), ddx, ddy, null);
-                                } else {
-                                    g.drawImage(PweeperMain.SPRITES.get("CellRevealedB"), ddx, ddy, null);
-                                }
+                        if (gameLive) {
+                            if (isRevealed(portal.x, portal.y) && isRevealed(x, y)) {
+                                g.drawImage(PweeperMain.SPRITES.get("CellB"), ddx, ddy, null);
                             }
                         } else {
-                            if (isRevealed(x, y)) {
-                                g.drawImage(PweeperMain.SPRITES.get("CellB"), dx, dy, null);
-                            } else if (!gameLive) {
-                                g.drawImage(PweeperMain.SPRITES.get("CellRevealedB"), dx, dy, null);
-                            }
-
-                            Int2 portal = inv(this.portalsMap).get(new Int2(x, y));
-
-                            int ddx = portal.x * 20 + (realGame ? 10 : 0);
-                            int ddy = portal.y * 20 + (realGame ? 70 : 0);
-
-                            if (gameLive) {
-                                if (isRevealed(portal.x, portal.y) && isRevealed(x, y)) {
-                                    g.drawImage(PweeperMain.SPRITES.get("CellA"), ddx, ddy, null);
-                                }
+                            if (isRevealed(portal.x, portal.y)) {
+                                g.drawImage(PweeperMain.SPRITES.get("CellB"), ddx, ddy, null);
                             } else {
-                                if (isRevealed(portal.x, portal.y)) {
-                                    g.drawImage(PweeperMain.SPRITES.get("CellA"), ddx, ddy, null);
-                                } else {
-                                    g.drawImage(PweeperMain.SPRITES.get("CellRevealedA"), ddx, ddy, null);
-                                }
+                                g.drawImage(PweeperMain.SPRITES.get("CellRevealedB"), ddx, ddy, null);
+                            }
+                        }
+                    } else {
+                        if (isRevealed(x, y)) {
+                            g.drawImage(PweeperMain.SPRITES.get("CellB"), dx, dy, null);
+                        } else if (!gameLive) {
+                            g.drawImage(PweeperMain.SPRITES.get("CellRevealedB"), dx, dy, null);
+                        }
+
+                        Int2 portal = inv(this.portalsMap).get(new Int2(x, y));
+
+                        int ddx = portal.x * 20 + (realGame ? 10 : 0);
+                        int ddy = portal.y * 20 + (realGame ? 70 : 0);
+
+                        if (gameLive) {
+                            if (isRevealed(portal.x, portal.y) && isRevealed(x, y)) {
+                                g.drawImage(PweeperMain.SPRITES.get("CellA"), ddx, ddy, null);
+                            }
+                        } else {
+                            if (isRevealed(portal.x, portal.y)) {
+                                g.drawImage(PweeperMain.SPRITES.get("CellA"), ddx, ddy, null);
+                            } else {
+                                g.drawImage(PweeperMain.SPRITES.get("CellRevealedA"), ddx, ddy, null);
                             }
                         }
                     }
                 }
             }
-        }
+        });
     }
 
     public void drawPortals(Graphics2D g, boolean realGame) {
-        for (int x = 0; x < getWidth(); x++) {
-            for (int y = 0; y < getHeight(); y++) {
-                int dx = x * 20 + (realGame ? 10 : 0);
-                int dy = y * 20 + (realGame ? 70 : 0);
-
-                if (isRevealed(x, y) || !gameLive) {
-                    if (isPortal(x, y)) {
-                        if (portalState(x, y)) {
-                            g.drawImage(PweeperMain.SPRITES.get("PortalA"), dx, dy, null);
-                        } else {
-                            g.drawImage(PweeperMain.SPRITES.get("PortalB"), dx, dy, null);
-                        }
+        drawCells(realGame, (x, y, dx, dy) -> {
+            if (isRevealed(x, y) || !gameLive) {
+                if (isPortal(x, y)) {
+                    if (portalState(x, y)) {
+                        g.drawImage(PweeperMain.SPRITES.get("PortalA"), dx, dy, null);
+                    } else {
+                        g.drawImage(PweeperMain.SPRITES.get("PortalB"), dx, dy, null);
                     }
                 }
             }
-        }
+        });
     }
 
     public void drawFlags(Graphics2D g, boolean realGame) {
-        for (int x = 0; x < getWidth(); x++) {
-            for (int y = 0; y < getHeight(); y++) {
-                int dx = x * 20 + (realGame ? 10 : 0);
-                int dy = y * 20 + (realGame ? 70 : 0);
+        drawCells(realGame, (x, y, dx, dy) -> {
 
-                if (!isRevealed(x, y) && isFlagged(x, y)) {
-                    if ((!gameLive && !isPortal(x, y)) || gameLive) {
-                        g.drawImage(PweeperMain.SPRITES.get("Flag"), dx, dy, null);
-                    }
+            if (!isRevealed(x, y) && isFlagged(x, y)) {
+                if ((!gameLive && !isPortal(x, y)) || gameLive) {
+                    g.drawImage(PweeperMain.SPRITES.get("Flag"), dx, dy, null);
+                }
 
-                    if (!gameLive && !isMine(x, y)) {
-                        g.drawImage(PweeperMain.SPRITES.get("CellWrong"), dx, dy, null);
-                    }
+                if (!gameLive && !isMine(x, y)) {
+                    g.drawImage(PweeperMain.SPRITES.get("CellWrong"), dx, dy, null);
                 }
             }
-        }
+        });
     }
 
     public void drawEndScreen(Graphics2D g, boolean realGame) {
-        for (int x = 0; x < getWidth(); x++) {
-            for (int y = 0; y < getHeight(); y++) {
-                int dx = x * 20 + (realGame ? 10 : 0);
-                int dy = y * 20 + (realGame ? 70 : 0);
-
-                if (!gameLive) {
-                    if (isMine(x, y)) {
-                        if (isRevealed(x, y)) {
-                            g.drawImage(PweeperMain.SPRITES.get("MineRevealed"), dx, dy, null);
+        drawCells(realGame, (x, y, dx, dy) -> {
+            if (!gameLive) {
+                if (isMine(x, y)) {
+                    if (isRevealed(x, y)) {
+                        g.drawImage(PweeperMain.SPRITES.get("MineRevealed"), dx, dy, null);
+                    } else {
+                        if (isFlagged(x, y)) {
+                            g.drawImage(PweeperMain.SPRITES.get("MineCorrect"), dx, dy, null);
                         } else {
-                            if (isFlagged(x, y)) {
-                                g.drawImage(PweeperMain.SPRITES.get("MineCorrect"), dx, dy, null);
-                            } else {
-                                g.drawImage(PweeperMain.SPRITES.get("Mine"), dx, dy, null);
-                            }
+                            g.drawImage(PweeperMain.SPRITES.get("Mine"), dx, dy, null);
                         }
                     }
                 }
             }
-        }
+        });
     }
 
     public void drawMineCount(Graphics2D g, boolean realGame) {
-        for (int x = 0; x < getWidth(); x++) {
-            for (int y = 0; y < getHeight(); y++) {
-                int dx = x * 20 + (realGame ? 10 : 0);
-                int dy = y * 20 + (realGame ? 70 : 0);
+        drawCells(realGame, (x, y, dx, dy) -> {
+            if (isRevealed(x, y) && !isPortal(x, y) && !isMine(x, y)) {
+                int c = getSurrounding(x, y);
 
-                if (isRevealed(x, y) && !isPortal(x, y) && !isMine(x, y)) {
-                    int c = getSurrounding(x, y);
-
-                    if (c > 0 && c <= 18) {
-                        g.drawImage(PweeperMain.SPRITES.get("" + c), dx, dy, null);
-                    }
-                }
-
-                if (isRevealed(x, y) && isPortal(x, y) && !isMine(x, y)) {
-                    int m = getPortalMarks(x, y);
-
-                    if (m > 0 && m <= 18) {
-                        if (m == 1) {
-                            m = 0;
-                        }
-
-                        g.drawImage(PweeperMain.SPRITES.get("" + m), dx, dy, null);
-                    }
+                if (c > 0 && c <= 18) {
+                    g.drawImage(PweeperMain.SPRITES.get("" + c), dx, dy, null);
                 }
             }
-        }
+
+            if (isRevealed(x, y) && isPortal(x, y) && !isMine(x, y)) {
+                int m = getPortalMarks(x, y);
+
+                if (m > 0 && m <= 18) {
+                    if (m == 1) {
+                        m = 0;
+                    }
+
+                    g.drawImage(PweeperMain.SPRITES.get("" + m), dx, dy, null);
+                }
+            }
+        });
     }
 
     public void drawGame(Graphics2D g, boolean won) {
@@ -392,7 +376,10 @@ public class GameState {
         g.setColor(new Color(60, 60, 60));
         g.drawRect(getWidth() * 20 - 69, 12, 25 * 3 + 2, 45);
 
-        for (int x = 0; x < getWidth(); x++) {
+        Int2 min = getDrawMin();
+        Int2 max = getDrawMax();
+
+        for (int x = min.x - 1; x < max.x + 1; x++) {
             int dx = x * 20 + 10;
 
             g.drawImage(PweeperMain.SPRITES.get("BoarderTB"), dx, 0, null);
@@ -405,7 +392,7 @@ public class GameState {
             g.drawImage(PweeperMain.SPRITES.get("BoarderTB"), dx + 10, getHeight() * 20 + 70, null);
         }
 
-        for (int y = 0; y < getHeight(); y++) {
+        for (int y = min.y - 1; y < max.y + 1; y++) {
             int dy = y * 20 + 70;
 
             g.drawImage(PweeperMain.SPRITES.get("BoarderLR"), 0, dy, null);
@@ -474,8 +461,8 @@ public class GameState {
         m: for (int x = 0; x < getWidth(); x++) {
             for (int y = 0; y < getHeight(); y++) {
                 if (!gameLive) {
-                    if (isMine(x, y) && !isRevealed(x, y)) {
-                        if (!isFlagged(x, y)) {
+                    if (isMine(x, y)) {
+                        if (isRevealed(x, y) || !isFlagged(x, y)) {
                             won = false;
                             break m;
                         }
@@ -491,9 +478,40 @@ public class GameState {
         g.dispose();
     }
 
+    public void drawCells(boolean realGame, RenderCall call) {
+
+        Int2 min = getDrawMin();
+        Int2 max = getDrawMax();
+
+        for (int x = Math.max(min.x - 1, 0); x < Math.min(max.x + 1, getWidth()); x++) {
+            for (int y = Math.max(min.y - 1, 0); y < Math.min(max.y + 1, getHeight()); y++) {
+                int dx = x * 20 + (realGame ? 10 : 0);
+                int dy = y * 20 + (realGame ? 70 : 0);
+
+                call.accept(x, y, dx, dy);
+            }
+        }
+    }
+
+    public Int2 getDrawMin() {
+        return controller.getCell(new Int2(0, 0));
+    }
+
+    public Int2 getDrawMax() {
+        return controller.getCell(new Int2(controller.drawPanel.getWidth(), controller.drawPanel.getHeight()));
+    }
+
     public void setMouse(int mouseX, int mouseY) {
         this.mouseX = mouseX;
         this.mouseY = mouseY;
+    }
+
+    public int getMouseX() {
+        return mouseX;
+    }
+
+    public int getMouseY() {
+        return mouseY;
     }
 
     public void setClicked(boolean clicked) {
@@ -562,6 +580,77 @@ public class GameState {
         return count;
     }
 
+    public boolean isCellUnambiguous(int x, int y) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                if (!isRevealed(x + dx, y + dy)) {
+                    if (!isFlagged(x + dx, y + dy)) {
+                        return false;
+                    }
+                } else if (isPortal(x + dx, y + dy)) {
+                    if (getPortalMarks(x + dx, y + dy) == 0) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    public boolean isCellKnown(int x, int y) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                if (!isRevealed(x + dx, y + dy)) {
+                    if (!isFlagged(x + dx, y + dy)) {
+                        return false;
+                    }
+                }
+            }
+        }
+
+        return true;
+    }
+
+    public boolean isEdge(int x, int y) {
+        for (int dx = -1; dx <= 1; dx++) {
+            for (int dy = -1; dy <= 1; dy++) {
+                if (isRevealed(x + dx, y + dy)) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
+
+    public boolean canAutoReveal(int x, int y) {
+        if (isRevealed(x, y) && !isPortal(x, y)) {
+
+            int flagCount = 0;
+            int marksCount = 0;
+
+            for (int dx = -1; dx <= 1; dx++) {
+                for (int dy = -1; dy <= 1; dy++) {
+                    if (!(dx == 0 && dy == 0)) {
+                        if (isFlagged(x + dx, y + dy)) {
+                            flagCount++;
+                        } else if (isRevealed(x + dx, y + dy) && isPortal(x + dx, y + dy)) {
+                            int m = getPortalMarks(x + dx, y + dy);
+                            if (m != 1) {
+                                marksCount += m;
+                            }
+                        }
+                    }
+                }
+            }
+
+            if (flagCount + marksCount == getSurrounding(x, y)) {
+                return true;
+            }
+        }
+        return false;
+    }
+
     public int getTotalFlags() {
         int flags = 0;
 
@@ -614,10 +703,25 @@ public class GameState {
 
     public static record Int2(int x, int y) {
 
+        public static double distanceSquared(Int2 a, Int2 b) {
+            int dx = a.x() - b.x();
+            int dy = a.y() - b.y();
+            return dx * dx + dy * dy;
+        }
+
+        public static double distance(Int2 a, Int2 b) {
+            return Math.sqrt(distanceSquared(a, b));
+        }
+
     }
 
     public static <K, V> Map<V, K> inv(Map<K, V> map) {
         return Map.copyOf(map.entrySet().stream().collect(Collectors.toMap(Map.Entry::getValue, Map.Entry::getKey)));
+    }
+
+    @FunctionalInterface
+    public static interface RenderCall {
+        void accept(int x, int y, int dx, int dy);
     }
 
 }

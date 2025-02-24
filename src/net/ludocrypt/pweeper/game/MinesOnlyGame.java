@@ -11,10 +11,11 @@ public class MinesOnlyGame extends GameState {
     }
 
     @Override
-    public void reveal(int x, int y) {
+    public int reveal(int x, int y) {
         if (isInBounds(x, y)) {
             mineGrid[x][y] = !mineGrid[x][y];
         }
+        return 0;
     }
 
     @Override

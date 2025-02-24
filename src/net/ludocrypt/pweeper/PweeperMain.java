@@ -5,9 +5,10 @@ import java.awt.Font;
 import java.awt.Graphics;
 import java.awt.Graphics2D;
 import java.awt.GridLayout;
+import java.awt.event.ComponentAdapter;
+import java.awt.event.ComponentEvent;
 import java.awt.image.BufferedImage;
 import java.io.BufferedReader;
-import java.io.IOException;
 import java.io.InputStream;
 import java.io.InputStreamReader;
 import java.util.HashMap;
@@ -17,6 +18,9 @@ import java.util.concurrent.ScheduledExecutorService;
 import java.util.concurrent.TimeUnit;
 
 import javax.imageio.ImageIO;
+import javax.sound.sampled.AudioInputStream;
+import javax.sound.sampled.AudioSystem;
+import javax.sound.sampled.Clip;
 import javax.swing.JButton;
 import javax.swing.JFrame;
 import javax.swing.JLabel;
@@ -37,17 +41,19 @@ import net.ludocrypt.pweeper.game.GamePermissions;
 import net.ludocrypt.pweeper.game.GameState;
 import net.ludocrypt.pweeper.game.GameState.Int2;
 import net.ludocrypt.pweeper.game.MinesOnlyGame;
+import net.ludocrypt.pweeper.render.Viewport;
 
 public class PweeperMain {
     private JFrame frame;
     private BufferedImage canvas;
-    private double mineDensity = 0.1, portalDensity = 0.05;
     private JPanel drawPanel;
 
     public static GameState gameState = new GameState(10, 10, 10, 6);
+    public static Viewport viewport;
     public static GameMouseController gameController;
 
     public static final Map<String, BufferedImage> SPRITES = new HashMap<>();
+    public static final Map<String, Clip> SOUNDS = new HashMap<>();
 
     public PweeperMain() {
         frame = new JFrame("Pweeper Sweeper");
@@ -55,9 +61,9 @@ public class PweeperMain {
         frame.setJMenuBar(createMenuBar());
 
         try {
-            InputStream inputStream = ClassLoader.getSystemResourceAsStream("resources/sprites.lst");
-            if (inputStream != null) {
-                BufferedReader reader = new BufferedReader(new InputStreamReader(inputStream));
+            InputStream spriteList = ClassLoader.getSystemResourceAsStream("resources/sprites.lst");
+            if (spriteList != null) {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(spriteList));
                 String line;
                 while ((line = reader.readLine()) != null) {
                     String name = line.trim().replace(".png", "");
@@ -68,7 +74,25 @@ public class PweeperMain {
                 }
                 reader.close();
             }
-        } catch (IOException e) {
+
+            InputStream soundList = ClassLoader.getSystemResourceAsStream("resources/sounds/sounds.lst");
+            if (soundList != null) {
+                BufferedReader reader = new BufferedReader(new InputStreamReader(soundList));
+                String line;
+                while ((line = reader.readLine()) != null) {
+                    String name = line.trim().replace(".wav", "");
+                    InputStream wavStream = ClassLoader.getSystemResourceAsStream("resources/sounds/" + line.trim());
+                    if (wavStream != null) {
+                        AudioInputStream audioStream = AudioSystem.getAudioInputStream(wavStream);
+                        Clip clip = AudioSystem.getClip();
+                        clip.open(audioStream);
+                        SOUNDS.put(name, clip);
+                    }
+
+                }
+                reader.close();
+            }
+        } catch (Exception e) {
             e.printStackTrace();
             System.exit(0);
         }
@@ -82,18 +106,14 @@ public class PweeperMain {
                 Graphics2D g2d = (Graphics2D) g;
                 gameState.draw(canvas, true);
 
-                int width = frame.getWidth() - frame.getInsets().left - frame.getInsets().right;
-                int height = frame.getHeight() - frame.getInsets().top - frame.getInsets().bottom - (frame.getJMenuBar() != null ? frame.getJMenuBar().getPreferredSize().height : 0);
-
-                double idealRatio = (gameState.getWidth() * 20.0 + 20.0) / (gameState.getHeight() * 20.0 + 80.0);
-
-                int newWidth = (int) Math.min(width, ((double) height * idealRatio));
-                int newHeight = (int) Math.min(height, ((double) width / idealRatio));
-
-                g2d.drawImage(canvas, (int) (width / 2.0 - newWidth / 2.0), (int) (height / 2.0 - newHeight / 2.0), newWidth, newHeight, null);
+                if (PweeperMain.viewport != null) {
+                    PweeperMain.viewport.drawTransformedImage(g2d, canvas);
+                }
 
             }
         };
+
+        viewport = new Viewport(drawPanel);
 
         gameController = new GameMouseController(gameState, drawPanel);
 
@@ -108,6 +128,15 @@ public class PweeperMain {
         int newWidth = gameState.getWidth() * 20 + 20 + frame.getInsets().left + frame.getInsets().right;
         int newHeight = gameState.getHeight() * 20 + 80 + menuHeight + frame.getInsets().top + frame.getInsets().bottom;
         frame.setSize(newWidth, newHeight);
+
+        frame.addComponentListener(new ComponentAdapter() {
+
+            @Override
+            public void componentResized(ComponentEvent e) {
+                updateCanvasSize();
+            }
+
+        });
 
         updateCanvasSize();
         centerWindow();
@@ -128,7 +157,7 @@ public class PweeperMain {
 
         easy.addActionListener(e -> setGameSize(10, 10, 10, 6));
         medium.addActionListener(e -> setGameSize(16, 16, 40, 20));
-        hard.addActionListener(e -> setGameSize(24, 24, 99, 30));
+        hard.addActionListener(e -> setGameSize(24, 24, 99, 50));
         custom.addActionListener(e -> openCustomDialog());
 
         gameMenu.add(easy);
@@ -208,6 +237,11 @@ public class PweeperMain {
         if (result == JOptionPane.OK_OPTION) {
             int w = Integer.parseInt(widthField.getText());
             int h = Integer.parseInt(heightField.getText());
+
+            // Constants found by Regression
+            double mineDensity = 0.188662 - 8.81325 / (w * h);
+            double portalDensity = 0.091585 - 3.18523 / (w * h);
+
             setGameSize(w, h, (int) (mineDensity * (double) w * (double) h), (int) (portalDensity * (double) w * (double) h));
         }
     }
@@ -313,8 +347,8 @@ public class PweeperMain {
                 games[1].mineGrid[2][1] = true;
                 games[1].mineGrid[2][2] = true;
 
-                adapters[0] = new GameMouseController(games[0], contentPanel, false, new Int2(7, 98), new Int2(0, 0), new Int2(7 * 20, 3 * 20));
-                adapters[1] = new GameMouseController(games[1], contentPanel, false, new Int2(167, 10), new Int2(0, 0), new Int2(3 * 20, 3 * 20));
+                adapters[0] = new GameMouseController(games[0], contentPanel, false, new Int2(7, 98), new Int2(7 * 20, 3 * 20));
+                adapters[1] = new GameMouseController(games[1], contentPanel, false, new Int2(167, 10), new Int2(3 * 20, 3 * 20));
 
                 canvi[0] = new BufferedImage(7 * 20, 3 * 20, BufferedImage.TYPE_INT_ARGB);
                 canvi[1] = new BufferedImage(3 * 20, 3 * 20, BufferedImage.TYPE_INT_ARGB);
@@ -343,7 +377,7 @@ public class PweeperMain {
                 games[0].revealed[0][3] = true;
                 games[0].revealed[1][3] = true;
 
-                adapters[0] = new GameMouseController(games[0], contentPanel, false, new Int2(8, 77), new Int2(0, 0), new Int2(6 * 20, 4 * 20));
+                adapters[0] = new GameMouseController(games[0], contentPanel, false, new Int2(8, 77), new Int2(6 * 20, 4 * 20));
 
                 canvi[0] = new BufferedImage(6 * 20, 4 * 20, BufferedImage.TYPE_INT_ARGB);
             } else if (slide == 3) {
@@ -362,7 +396,7 @@ public class PweeperMain {
                 games[0].revealed[1][2] = true;
                 games[0].revealed[2][2] = true;
 
-                adapters[0] = new GameMouseController(games[0], contentPanel, false, new Int2(8, 98), new Int2(0, 0), new Int2(3 * 20, 3 * 20));
+                adapters[0] = new GameMouseController(games[0], contentPanel, false, new Int2(8, 98), new Int2(3 * 20, 3 * 20));
 
                 canvi[0] = new BufferedImage(3 * 20, 3 * 20, BufferedImage.TYPE_INT_ARGB);
             } else if (slide == 4) {
@@ -443,8 +477,8 @@ public class PweeperMain {
 
                 games[1].portalsMap.put(new Int2(2, 1), new Int2(0, 3));
 
-                adapters[0] = new GameMouseController(games[0], contentPanel, false, new Int2(8, 77), new Int2(0, 0), new Int2(5 * 20, 4 * 20));
-                adapters[1] = new GameMouseController(games[1], contentPanel, false, new Int2(233, 7), new Int2(0, 0), new Int2(3 * 20, 6 * 20));
+                adapters[0] = new GameMouseController(games[0], contentPanel, false, new Int2(8, 77), new Int2(5 * 20, 4 * 20));
+                adapters[1] = new GameMouseController(games[1], contentPanel, false, new Int2(233, 7), new Int2(3 * 20, 6 * 20));
 
                 canvi[0] = new BufferedImage(5 * 20, 4 * 20, BufferedImage.TYPE_INT_ARGB);
                 canvi[1] = new BufferedImage(3 * 20, 6 * 20, BufferedImage.TYPE_INT_ARGB);
@@ -474,7 +508,7 @@ public class PweeperMain {
 
                 games[0].portalsMap.put(new Int2(1, 0), new Int2(1, 3));
 
-                adapters[0] = new GameMouseController(games[0], contentPanel, false, new Int2(7, 78), new Int2(0, 0), new Int2(4 * 20, 4 * 20));
+                adapters[0] = new GameMouseController(games[0], contentPanel, false, new Int2(7, 78), new Int2(4 * 20, 4 * 20));
 
                 canvi[0] = new BufferedImage(4 * 20, 4 * 20, BufferedImage.TYPE_INT_ARGB);
             } else if (slide == 6) {
@@ -504,7 +538,7 @@ public class PweeperMain {
                 games[0].revealed[3][2] = true;
                 games[0].revealed[4][2] = true;
 
-                adapters[0] = new GameMouseController(games[0], contentPanel, false, new Int2(8, 97), new Int2(0, 0), new Int2(5 * 20, 3 * 20));
+                adapters[0] = new GameMouseController(games[0], contentPanel, false, new Int2(8, 97), new Int2(5 * 20, 3 * 20));
 
                 canvi[0] = new BufferedImage(5 * 20, 3 * 20, BufferedImage.TYPE_INT_ARGB);
             }
@@ -571,6 +605,14 @@ public class PweeperMain {
 
         helpFrame.setSize(newWidth, newHeight);
         helpFrame.setResizable(false);
+    }
+
+    public static void playSound(String name) {
+        Clip clip = SOUNDS.get(name);
+        if (clip != null) {
+            clip.setFramePosition(0);
+            clip.start();
+        }
     }
 
     public static void main(String[] args) {
