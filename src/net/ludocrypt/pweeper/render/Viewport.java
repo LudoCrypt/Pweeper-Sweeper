@@ -11,96 +11,103 @@ import org.joml.Vector3f;
 
 public class Viewport {
 
-    Matrix4f mat;
-    Matrix4f transMat;
+	Matrix4f mat;
+	Matrix4f transMat;
 
-    boolean locked;
+	boolean locked;
 
-    JPanel drawPanel;
+	JPanel drawPanel;
 
-    public Viewport(JPanel drawPanel) {
-        mat = new Matrix4f();
-        transMat = new Matrix4f();
-        this.drawPanel = drawPanel;
-    }
+	public Viewport(JPanel drawPanel) {
+		mat = new Matrix4f();
+		transMat = new Matrix4f();
+		this.drawPanel = drawPanel;
+	}
 
-    public void lock() {
-        locked = true;
-    }
+	public Viewport(JPanel drawPanel, boolean locked) {
+		mat = new Matrix4f();
+		transMat = new Matrix4f();
+		this.drawPanel = drawPanel;
+		this.locked = locked;
+	}
 
-    public void unlock() {
-        locked = !locked;
-    }
+	public void lock() {
+		locked = true;
+	}
 
-    public void setMouse(double x, double y) {
-        if (!locked) {
-            transMat = new Matrix4f();
-            transMat.translate((float) x, (float) y, 0);
-        }
-    }
+	public void unlock() {
+		locked = !locked;
+	}
 
-    public void pushMouse() {
-        Matrix4f mat = new Matrix4f();
-        mat.mul(this.transMat);
-        mat.mul(this.mat);
+	public void setMouse(double x, double y) {
+		if (!locked) {
+			transMat = new Matrix4f();
+			transMat.translate((float) x, (float) y, 0);
+		}
+	}
 
-        this.mat = mat;
+	public void pushMouse() {
+		Matrix4f mat = new Matrix4f();
+		mat.mul(this.transMat);
+		mat.mul(this.mat);
 
-        setMouse(0, 0);
-    }
+		this.mat = mat;
 
-    public void zoom(double x, double y, double zoomScale, int dir) {
-        if (!locked) {
-            zoomScale += Math.abs(dir / 10.0);
+		setMouse(0, 0);
+	}
 
-            if (dir > 0) {
-                zoomScale = 1 / zoomScale;
-            }
+	public void zoom(double x, double y, double zoomScale, int dir) {
+		if (!locked) {
+			zoomScale += Math.abs(dir / 10.0);
 
-            float scaleX = mat.m00();
-            float scaleY = mat.m11();
+			if (dir > 0) {
+				zoomScale = 1 / zoomScale;
+			}
 
-            float translateX = mat.m30();
-            float translateY = mat.m31();
+			float scaleX = mat.m00();
+			float scaleY = mat.m11();
 
-            float worldX = ((float) x - translateX) / scaleX;
-            float worldY = ((float) y - translateY) / scaleY;
+			float translateX = mat.m30();
+			float translateY = mat.m31();
 
-            mat.m00(scaleX * (float) zoomScale);
-            mat.m11(scaleY * (float) zoomScale);
+			float worldX = ((float) x - translateX) / scaleX;
+			float worldY = ((float) y - translateY) / scaleY;
 
-            mat.m30((float) x - worldX * mat.m00());
-            mat.m31((float) y - worldY * mat.m11());
-        }
-    }
+			mat.m00(scaleX * (float) zoomScale);
+			mat.m11(scaleY * (float) zoomScale);
 
-    public Matrix4f composeMat(boolean inv) {
-        Matrix4f projMat = new Matrix4f();
-        projMat.mul(transMat);
-        projMat.mul(mat);
+			mat.m30((float) x - worldX * mat.m00());
+			mat.m31((float) y - worldY * mat.m11());
+		}
+	}
 
-        if (inv) {
-            projMat.invert();
-        }
+	public Matrix4f composeMat(boolean inv) {
+		Matrix4f projMat = new Matrix4f();
+		projMat.mul(transMat);
+		projMat.mul(mat);
 
-        return projMat;
-    }
+		if (inv) {
+			projMat.invert();
+		}
 
-    public Matrix4f composeMat() {
-        return composeMat(false);
-    }
+		return projMat;
+	}
 
-    public void drawTransformedImage(Graphics2D g, BufferedImage image) {
-        Matrix4f mat = composeMat();
+	public Matrix4f composeMat() {
+		return composeMat(false);
+	}
 
-        Vector3f scale = new Vector3f();
-        scale = mat.getScale(scale);
+	public void drawTransformedImage(Graphics2D g, BufferedImage image) {
+		Matrix4f mat = composeMat();
 
-        Vector3f translation = new Vector3f();
-        translation = mat.getTranslation(translation);
+		Vector3f scale = new Vector3f();
+		scale = mat.getScale(scale);
 
-        AffineTransform at = new AffineTransform(scale.x, 0, 0, scale.y, translation.x * drawPanel.getWidth(), translation.y * drawPanel.getHeight());
-        g.drawImage(image, at, null);
-    }
+		Vector3f translation = new Vector3f();
+		translation = mat.getTranslation(translation);
+
+		AffineTransform at = new AffineTransform(scale.x, 0, 0, scale.y, translation.x * drawPanel.getWidth(), translation.y * drawPanel.getHeight());
+		g.drawImage(image, at, null);
+	}
 
 }
